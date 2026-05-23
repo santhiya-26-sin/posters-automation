@@ -74,22 +74,78 @@ def send_message(page, text):
 
     raise Exception("Send button never became enabled")
 
-def run_browser(prompt, output_dir=None, profile_dir=None, login_timeout_s=None, prompt_timeout_s=None):
-    output_dir      = output_dir      or CONFIG["output_dir"]
-    profile_dir     = profile_dir     or CONFIG["profile_dir"]
-    login_timeout_s = login_timeout_s or CONFIG["login_timeout_s"]
-    prompt_timeout_s= prompt_timeout_s or CONFIG["prompt_timeout_s"]
+# ─────────────────────────────────────────
+#  CHECK IF ALREADY LOGGED IN
+# ─────────────────────────────────────────
+def is_logged_in(page):
+    try:
+        # Check if "Log in" button is visible at top right
+        login_btn = page.locator('button:has-text("Log in")').first
+        if login_btn.is_visible(timeout=5_000):
+            log("ChatGPT is not logged in ❌")
+            return False
+        log("ChatGPT is already logged in ✅")
+        return True
+    except:
+        log("ChatGPT is already logged in ✅")
+        return True
+
+# ─────────────────────────────────────────
+#  AUTO LOGIN
+# ─────────────────────────────────────────
+def login_to_chatgpt(page, email, password):
+    log("Logging in to ChatGPT...")
+
+    # Click the Log in button inside the popup
+    page.wait_for_selector('button:has-text("Log in")', timeout=15_000)
+    page.locator('button:has-text("Log in")').last.click()
+    time.sleep(3)
+
+    # Enter email
+    log("Entering email...")
+    page.wait_for_selector('input[type="email"], input[name="email"]', timeout=15_000)
+    page.locator('input[type="email"], input[name="email"]').first.fill(email)
+    page.get_by_role("button", name="Continue", exact=True).click()
+    time.sleep(3)
+
+    # Check if password field exists — some accounts skip it
+    try:
+        page.wait_for_selector('input[type="password"]', timeout=8_000)
+        log("Entering password...")
+        page.locator('input[type="password"]').first.fill(password)
+        page.get_by_role("button", name="Continue", exact=True).click()
+        time.sleep(5)
+    except:
+        log("Password step skipped — checking if already logged in...")
+        time.sleep(3)
+
+    log("Waiting for login to complete...")
+    page.wait_for_selector("div[contenteditable='true']", timeout=30_000)
+    log("Login successful ✅")
+
+# ─────────────────────────────────────────
+#  MAIN BROWSER FUNCTION
+# ─────────────────────────────────────────
+def run_browser(prompt, output_dir=None, profile_dir=None, login_timeout_s=None,
+                prompt_timeout_s=None, chatgpt_email=None, chatgpt_password=None):
+
+    output_dir       = output_dir       or CONFIG["output_dir"]
+    profile_dir      = profile_dir      or CONFIG["profile_dir"]
+    login_timeout_s  = login_timeout_s  or CONFIG["login_timeout_s"]
+    prompt_timeout_s = prompt_timeout_s or CONFIG["prompt_timeout_s"]
+    chatgpt_email    = chatgpt_email    or CONFIG.get("chatgpt_email")
+    chatgpt_password = chatgpt_password or CONFIG.get("chatgpt_password")
 
     os.makedirs(output_dir, exist_ok=True)
 
     with sync_playwright() as p:
         context = p.chromium.launch_persistent_context(
             profile_dir,
-            headless        = False,
-            channel         = "chrome",
-            accept_downloads= True,
-            viewport        = {"width": 1400, "height": 900},
-            user_agent      = (
+            headless         = False,
+            channel          = "chrome",
+            accept_downloads = True,
+            viewport         = {"width": 1400, "height": 900},
+            user_agent       = (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/124.0.0.0 Safari/537.36"
@@ -113,26 +169,38 @@ def run_browser(prompt, output_dir=None, profile_dir=None, login_timeout_s=None,
         page = context.pages[0] if context.pages else context.new_page()
         time.sleep(3)
 
+        # Open ChatGPT
         log("Opening ChatGPT...")
         page.goto("https://chatgpt.com", wait_until="domcontentloaded", timeout=60_000)
+        time.sleep(3)
 
-        log("Waiting for chat input...")
-        page.wait_for_selector(
-            "div[contenteditable='true']",
-            state   = "visible",
-            timeout = login_timeout_s * 1000
-        )
+        # Check login BEFORE sending prompt
+        if not is_logged_in(page):
+            if chatgpt_email and chatgpt_password:
+                login_to_chatgpt(page, chatgpt_email, chatgpt_password)
+            else:
+                log("No credentials provided — please log in manually in the browser...")
+                page.wait_for_selector("div[contenteditable='true']",
+                                       timeout=login_timeout_s * 1000)
+        
+        # Wait and confirm login before proceeding
+        time.sleep(2)
+        page.wait_for_selector("div[contenteditable='true']", timeout=30_000)
+        log("Chat input ready — proceeding to send prompt...")
         time.sleep(2)
 
+        # Send prompt AFTER login confirmed
         log("Sending prompt...")
         send_message(page, prompt)
 
+        # Wait for image
         log("Waiting for poster image...")
         img = wait_for_generated_image(page, prompt_timeout_s)
         src = img.get_attribute("src")
         if not src:
             raise Exception("Image has no src attribute")
 
+        # Save image
         timestamp   = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
         output_file = os.path.join(output_dir, f"poster-{timestamp}.png")
         save_image(page, src, output_file)
@@ -140,3 +208,4 @@ def run_browser(prompt, output_dir=None, profile_dir=None, login_timeout_s=None,
 
         context.close()
         return output_file
+    

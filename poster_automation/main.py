@@ -6,14 +6,16 @@ from .browser import run_browser
 from .drive_upload import upload_to_drive
 
 def run(
-    profile_dir      = None,
-    output_dir       = None,
-    drive_folder_id  = None,
-    oauth_credentials= None,
-    token_file       = None,
-    prompt_files     = None,
-    schedule_hour    = None,
-    schedule_minute  = None,
+    profile_dir       = None,
+    output_dir        = None,
+    drive_folder_id   = None,
+    oauth_credentials = None,
+    token_file        = None,
+    prompt_files      = None,
+    schedule_hour     = None,
+    schedule_minute   = None,
+    chatgpt_email     = None,   # ← NEW
+    chatgpt_password  = None,   # ← NEW
 ):
     try:
         # Wait until scheduled time
@@ -27,17 +29,19 @@ def run(
 
         # Run browser → generate image → save locally
         output_file = run_browser(
-            prompt      = prompt,
-            output_dir  = output_dir,
-            profile_dir = profile_dir,
+            prompt           = prompt,
+            output_dir       = output_dir,
+            profile_dir      = profile_dir,
+            chatgpt_email    = chatgpt_email,     # ← NEW
+            chatgpt_password = chatgpt_password,  # ← NEW
         )
 
         # Upload to Google Drive
         upload_to_drive(
-            file_path        = output_file,
-            drive_folder_id  = drive_folder_id,
-            oauth_credentials= oauth_credentials,
-            token_file       = token_file,
+            file_path         = output_file,
+            drive_folder_id   = drive_folder_id,
+            oauth_credentials = oauth_credentials,
+            token_file        = token_file,
         )
 
         print("\n✅  Done.")
@@ -45,3 +49,4 @@ def run(
     except Exception as e:
         log(f"Workflow failed: {e}", is_error=True)
         raise
+    

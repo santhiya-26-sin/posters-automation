@@ -18,7 +18,11 @@ def get_auth_client(oauth_credentials=None, token_file=None):
 
     # Load existing token
     if os.path.exists(token_file):
+     try:
         creds = Credentials.from_authorized_user_file(token_file, SCOPES)
+     except Exception:
+        os.remove(token_file)
+        creds = None
 
     # Refresh or re-authorize if needed
     if not creds or not creds.valid:
