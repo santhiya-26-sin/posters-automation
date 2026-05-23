@@ -15,7 +15,8 @@ def run(
     schedule_hour     = None,
     schedule_minute   = None,
     chatgpt_email     = None,   # ← NEW
-    chatgpt_password  = None,   # ← NEW
+    chatgpt_password  = None,
+    logo_path         = None,   
 ):
     try:
         # Wait until scheduled time
@@ -34,6 +35,7 @@ def run(
             profile_dir      = profile_dir,
             chatgpt_email    = chatgpt_email,     # ← NEW
             chatgpt_password = chatgpt_password,  # ← NEW
+            logo_path        = logo_path,
         )
 
         # Upload to Google Drive

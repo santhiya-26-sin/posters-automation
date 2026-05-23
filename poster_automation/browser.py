@@ -6,6 +6,25 @@ from playwright.sync_api import sync_playwright
 from .logger import log
 from .config import CONFIG
 
+def overlay_logo(poster_path, logo_path):
+    if not logo_path or not os.path.exists(logo_path):
+        log("No logo file found — skipping overlay.")
+        return
+
+    from PIL import Image
+    log("Overlaying logo onto poster...")
+    poster = Image.open(poster_path).convert("RGBA")
+    logo   = Image.open(logo_path).convert("RGBA")
+
+    # Make logo bigger — increased from 180x60 to 300x100
+    box_w, box_h = 420, 140
+    logo = logo.resize((box_w, box_h), Image.LANCZOS)
+
+    # Paste logo at top left
+    poster.paste(logo, (40, 40), logo)
+    poster.convert("RGB").save(poster_path)
+    log("Logo overlaid successfully ✅")
+
 def save_image(page, src, output_path):
     if src.startswith("data:"):
         _, b64 = src.split(",", 1)
@@ -126,8 +145,10 @@ def login_to_chatgpt(page, email, password):
 # ─────────────────────────────────────────
 #  MAIN BROWSER FUNCTION
 # ─────────────────────────────────────────
+
 def run_browser(prompt, output_dir=None, profile_dir=None, login_timeout_s=None,
-                prompt_timeout_s=None, chatgpt_email=None, chatgpt_password=None):
+                prompt_timeout_s=None, chatgpt_email=None, chatgpt_password=None,
+                logo_path=None):
 
     output_dir       = output_dir       or CONFIG["output_dir"]
     profile_dir      = profile_dir      or CONFIG["profile_dir"]
@@ -135,6 +156,7 @@ def run_browser(prompt, output_dir=None, profile_dir=None, login_timeout_s=None,
     prompt_timeout_s = prompt_timeout_s or CONFIG["prompt_timeout_s"]
     chatgpt_email    = chatgpt_email    or CONFIG.get("chatgpt_email")
     chatgpt_password = chatgpt_password or CONFIG.get("chatgpt_password")
+    logo_path        = logo_path        or CONFIG.get("logo_path")
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -205,6 +227,9 @@ def run_browser(prompt, output_dir=None, profile_dir=None, login_timeout_s=None,
         output_file = os.path.join(output_dir, f"poster-{timestamp}.png")
         save_image(page, src, output_file)
         log(f"Poster saved → {output_file}")
+
+        # Overlay logo
+        overlay_logo(output_file, logo_path)
 
         context.close()
         return output_file
