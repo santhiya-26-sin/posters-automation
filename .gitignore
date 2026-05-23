@@ -1,0 +1,11 @@
+chrome-profile/
+output/
+token.json
+oauth-credentials.json
+credentials.json
+prompt1.txt
+prompt2.txt
+prompt3.txt
+prompt4.txt
+__pycache__/
+*.pyc
