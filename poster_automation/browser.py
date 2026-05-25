@@ -6,24 +6,6 @@ from playwright.sync_api import sync_playwright
 from .logger import log
 from .config import CONFIG
 
-def overlay_logo(poster_path, logo_path):
-    if not logo_path or not os.path.exists(logo_path):
-        log("No logo file found — skipping overlay.")
-        return
-
-    from PIL import Image
-    log("Overlaying logo onto poster...")
-    poster = Image.open(poster_path).convert("RGBA")
-    logo   = Image.open(logo_path).convert("RGBA")
-
-    # Make logo bigger — increased from 180x60 to 300x100
-    box_w, box_h = 420, 140
-    logo = logo.resize((box_w, box_h), Image.LANCZOS)
-
-    # Paste logo at top left
-    poster.paste(logo, (40, 40), logo)
-    poster.convert("RGB").save(poster_path)
-    log("Logo overlaid successfully ✅")
 
 def save_image(page, src, output_path):
     if src.startswith("data:"):
@@ -45,24 +27,30 @@ def save_image(page, src, output_path):
     with open(output_path, "wb") as f:
         f.write(base64.b64decode(b64))
 
-def wait_for_generated_image(page, timeout_s):
+def wait_for_generated_image(page, timeout_s, images_before=0):
     sel = ", ".join([
         'img[src*="oaiusercontent"]',
-        'img[src*="estuary"]',
-        'img[src*="file-service"]',
+        'img[src*="estuary/content"]',
     ])
     start = time.time()
+
+    # Wait minimum 15 seconds for ChatGPT to start generating
+    log("Waiting 15 seconds for ChatGPT to start generating...")
+    time.sleep(15)
 
     while time.time() - start < timeout_s:
         candidates = page.locator(sel)
         count      = candidates.count()
         log(f"Scanning for image... {count} candidate(s)")
 
-        for i in range(count):
-            img    = candidates.nth(i)
+        # Need at least 2 images — uploaded logo + generated poster
+        if count > images_before + 1:
+            # Always take the LAST image — that's the generated one
+            img    = candidates.last
             src    = img.get_attribute("src") or ""
             loaded = img.evaluate("el => el.naturalWidth > 0")
-            if loaded and src and "avatar" not in src and "logo" not in src:
+
+            if loaded and src:
                 log(f"Image found: {src[:70]}")
                 img.scroll_into_view_if_needed()
                 return img
@@ -71,9 +59,32 @@ def wait_for_generated_image(page, timeout_s):
 
     raise TimeoutError("Timed out waiting for generated image")
 
-def send_message(page, text):
-    page.evaluate("(t) => navigator.clipboard.writeText(t)", text)
+def send_message(page, text, logo_path=None):
     textarea = page.locator("div[contenteditable='true']").first
+    textarea.click()
+    time.sleep(0.5)
+
+    # Upload logo file if provided
+    if logo_path and os.path.exists(logo_path):
+        log("Uploading logo file...")
+
+        # Resize logo before uploading
+        from PIL import Image
+        import tempfile
+        logo_img = Image.open(logo_path)
+        logo_img = logo_img.resize((800, 267), Image.LANCZOS)
+        tmp_path = tempfile.mktemp(suffix=".png")
+        logo_img.save(tmp_path)
+
+        page.locator('input[type="file"]').first.set_input_files(tmp_path)
+        time.sleep(3)
+
+        # Clean up temp file
+        os.remove(tmp_path)
+        log("Logo uploaded ✅")
+
+    # Type prompt
+    page.evaluate("(t) => navigator.clipboard.writeText(t)", text)
     textarea.click()
     time.sleep(0.4)
     page.keyboard.press("Control+v")
@@ -92,7 +103,6 @@ def send_message(page, text):
         time.sleep(1)
 
     raise Exception("Send button never became enabled")
-
 # ─────────────────────────────────────────
 #  CHECK IF ALREADY LOGGED IN
 # ─────────────────────────────────────────
@@ -211,13 +221,18 @@ def run_browser(prompt, output_dir=None, profile_dir=None, login_timeout_s=None,
         log("Chat input ready — proceeding to send prompt...")
         time.sleep(2)
 
-        # Send prompt AFTER login confirmed
-        log("Sending prompt...")
-        send_message(page, prompt)
+        # Count existing images BEFORE sending prompt
+        sel = 'img[src*="oaiusercontent"], img[src*="estuary/content"]'
+        images_before = page.locator(sel).count()
+        log(f"Images before prompt: {images_before}")
 
-        # Wait for image
+        # Send prompt WITH logo
+        log("Sending prompt...")
+        send_message(page, prompt, logo_path=logo_path)
+
+        # Wait for NEW image AFTER prompt
         log("Waiting for poster image...")
-        img = wait_for_generated_image(page, prompt_timeout_s)
+        img = wait_for_generated_image(page, prompt_timeout_s, images_before)
         src = img.get_attribute("src")
         if not src:
             raise Exception("Image has no src attribute")
@@ -228,9 +243,6 @@ def run_browser(prompt, output_dir=None, profile_dir=None, login_timeout_s=None,
         save_image(page, src, output_file)
         log(f"Poster saved → {output_file}")
 
-        # Overlay logo
-        overlay_logo(output_file, logo_path)
-
         context.close()
         return output_file
-    
+

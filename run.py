@@ -15,6 +15,6 @@ run(
         "D:\\posters-automation\\prompt3.txt",
         "D:\\posters-automation\\prompt4.txt",
     ],
-    schedule_hour   = 17,
-    schedule_minute = 10,
+    schedule_hour   = 6,
+    schedule_minute = 48,
 )

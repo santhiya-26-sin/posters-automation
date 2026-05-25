@@ -55,16 +55,4 @@ Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" -ArgumentL
 
 
 //TO clear cookies
- python -c "                         
->> from playwright.sync_api import sync_playwright
->> with sync_playwright() as p:
->>     context = p.chromium.launch_persistent_context(
->>         'D:\\\\posters-automation\\\\chrome-profile',
->>         channel='chrome',
->>         headless=False,
->>         args=['--profile-directory=Default']
->>     )
->>     context.clear_cookies()
->>     context.close()
->>     print('Cookies cleared!')
->> "
+python -c "from playwright.sync_api import sync_playwright; p = sync_playwright().start(); context = p.chromium.launch_persistent_context('D:\\posters-automation\\chrome-profile', channel='chrome', headless=False, args=['--profile-directory=Default']); context.clear_cookies(); context.close(); p.stop(); print('Cookies cleared!')"
